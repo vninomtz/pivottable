@@ -1,18 +1,20 @@
 import Node from "./node"
+import Aggregator, { AggregatorDef } from "./aggregator"
 import {getKeyValues} from "./utils"
 
-interface PivotParams {
+export interface PivotParams {
   data: Array<Object>
   rows: Array<string>
-  columns: Array<String>
+  columns: Array<string>
+  aggDefs: Array<AggregatorDef>
 }
 
-function appendNodes(_node: Node, _keys: Array<string>, record: Object){
+function appendMatches(_node: Node, _keys: Array<string>, record: Object, match: string, agg: Aggregator){
   let keys = [..._keys]
   let node = _node
   let key = keys.shift()
   // add record to root to handle global agg
-  node.records.push(record)
+  node.addTotal(record)
 
   while (key !== undefined) {
     let n = node.findNodeByValue(key)
@@ -22,7 +24,12 @@ function appendNodes(_node: Node, _keys: Array<string>, record: Object){
       n.value = key
       node.nodes.push(n)
     }
-    n.records.push(record)
+    n.setTotal(agg.clone())
+    if (match !== "") {
+      n.setMatch(match, agg)
+      n.addMatch(match, record)
+    }
+    n.addTotal(record)
     node = n
     key = keys.shift()
   }
@@ -65,13 +72,16 @@ export default class PivotData {
   }
 
   static pivot (params: PivotParams) {
-    const {data, rows} = params
+    const {data, rows, columns, aggDefs} = params
 
     const root = new Node()
+    const agg = Aggregator.create(aggDefs)
+    root.setTotal(agg)
 
     data.forEach(record => {
       const rowValues = getKeyValues(record, rows)
-      appendNodes(root, rowValues, record)
+      const colMatch = getKeyValues(record, columns).join("")
+      appendMatches(root, rowValues, record, colMatch, agg.clone())
     })
 
     return new PivotData(root)
